@@ -1,57 +1,81 @@
+import sys
+import os
 import openpyxl
 from datetime import datetime
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ConversationHandler, ContextTypes
-import os
-import sys
 import speech_recognition as sr
 from pydub import AudioSegment
 
-# ========== НАЛАШТУВАННЯ ==========
+# ========================================
+# ПРИМУСОВЕ ЛОГУВАННЯ (видно в логах Koyeb)
+# ========================================
+print("=" * 60)
+print("🤖 БОТ ЗАПУСКАЄТЬСЯ")
+print(f"Python версія: {sys.version}")
+print(f"Поточна папка: {os.getcwd()}")
+print("=" * 60)
+sys.stdout.flush()
+
+# ========================================
+# НАЛАШТУВАННЯ
+# ========================================
 TOKEN = "8768269164:AAHqoOfBA0c4ng_zLoy23sfzajWsNBSJ_9g"
 EXCEL_FILE = "notebook.xlsx"
+
+print(f"✅ Токен завантажено: {TOKEN[:10]}...")
+sys.stdout.flush()
 
 CATEGORIES = ["ТЕК", "Ідеї", "Особисті", "Книги", "Фільми", "Що відвідати", "Цікаві думки"]
 TASK_CATEGORIES = ["ТЕК", "Ідеї", "Особисті"]
 MEDIA_CATEGORIES = ["Книги", "Фільми", "Що відвідати"]
 THOUGHT_CATEGORIES = ["Цікаві думки"]
-
 CATEGORY, DESCRIPTION, PRIORITY, RESPONSIBLE, DUE_DATE, NAME, LINK = range(7)
 
-print("=" * 50)
-print("🤖 Бот запускається...")
-print(f"Python версія: {sys.version}")
-print("=" * 50)
+print("✅ Налаштування завантажено")
+sys.stdout.flush()
 
-# ========== РОБОТА З EXCEL ==========
+# ========================================
+# РОБОТА З EXCEL
+# ========================================
 def save_to_excel(data):
     try:
-        wb = openpyxl.load_workbook(EXCEL_FILE)
-        sheet = wb.active
-    except FileNotFoundError:
-        wb = openpyxl.Workbook()
-        sheet = wb.active
-        headers = ["Категорія", "Дата", "Опис", "Пріоритет", "Хто відповідальний", 
-                   "Дата виконання орієнтовна", "Назва (фільми,книги, що відвідати)", 
-                   "Лінк (фільм, книги, що відвідати)"]
-        sheet.append(headers)
-    
-    row = [
-        data.get("category", ""),
-        datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        data.get("description", ""),
-        data.get("priority", ""),
-        data.get("responsible", ""),
-        data.get("due_date", ""),
-        data.get("name", ""),
-        data.get("link", "")
-    ]
-    sheet.append(row)
-    wb.save(EXCEL_FILE)
-    print(f"✅ Записано в Excel: {data.get('description', '')[:50]}")
+        print(f"📝 Зберігаю в Excel: {data.get('description', '')[:30]}...")
+        try:
+            wb = openpyxl.load_workbook(EXCEL_FILE)
+            sheet = wb.active
+        except FileNotFoundError:
+            print("📄 Створюю новий файл Excel...")
+            wb = openpyxl.Workbook()
+            sheet = wb.active
+            headers = ["Категорія", "Дата", "Опис", "Пріоритет", "Хто відповідальний", 
+                       "Дата виконання", "Назва", "Лінк"]
+            sheet.append(headers)
+        
+        row = [
+            data.get("category", ""),
+            datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            data.get("description", ""),
+            data.get("priority", ""),
+            data.get("responsible", ""),
+            data.get("due_date", ""),
+            data.get("name", ""),
+            data.get("link", "")
+        ]
+        sheet.append(row)
+        wb.save(EXCEL_FILE)
+        print("✅ Excel збережено!")
+        sys.stdout.flush()
+        return True
+    except Exception as e:
+        print(f"❌ Помилка збереження Excel: {e}")
+        sys.stdout.flush()
+        return False
 
-# ========== РОЗПІЗНАВАННЯ ГОЛОСУ ==========
-async def transcribe_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# ========================================
+# ГОЛОСОВІ
+# ========================================
+async def transcribe_voice(update, context):
     try:
         await update.message.reply_text("🎤 Обробляю голосове...")
         voice = update.message.voice
@@ -80,10 +104,11 @@ async def transcribe_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return None
     except Exception as e:
         print(f"❌ Помилка розпізнавання: {e}")
+        sys.stdout.flush()
         await update.message.reply_text("❌ Помилка обробки голосового.")
         return None
 
-async def voice_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def voice_handler(update, context):
     if "category" not in context.user_data:
         await update.message.reply_text("⚠️ Спочатку оберіть категорію через /start")
         return
@@ -94,21 +119,24 @@ async def voice_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     category = context.user_data["category"]
     if category in THOUGHT_CATEGORIES:
         save_to_excel(context.user_data)
-        await update.message.reply_text(f"🎤 Розпізнано: {text}\n\n✅ Збережено!\n📌 Категорія: {category}")
+        await update.message.reply_text(f"🎤 Розпізнано: {text}\n\n✅ Збережено!")
         context.user_data.clear()
         return
     if "priority" not in context.user_data:
         context.user_data["priority"] = "Середній"
     save_to_excel(context.user_data)
-    await update.message.reply_text(f"🎤 Розпізнано: {text}\n\n✅ Збережено!\n📌 Категорія: {category}")
+    await update.message.reply_text(f"🎤 Розпізнано: {text}\n\n✅ Збережено!")
     context.user_data.clear()
 
-# ========== ОСНОВНІ ФУНКЦІЇ ==========
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    print(f"📩 Команда /start від {update.effective_user.username}")
+# ========================================
+# ОСНОВНІ ФУНКЦІЇ
+# ========================================
+async def start(update, context):
+    print(f"📩 /start від {update.effective_user.username}")
+    sys.stdout.flush()
     keyboard = [[InlineKeyboardButton(cat, callback_data=cat)] for cat in CATEGORIES]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    text = "📋 Оберіть категорію для нового запису:"
+    text = "📋 Оберіть категорію:"
     if update.message:
         await update.message.reply_text(text, reply_markup=reply_markup)
     elif update.callback_query:
@@ -117,32 +145,33 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text(text, reply_markup=reply_markup)
     return CATEGORY
 
-async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def handle_text(update, context):
     return await start(update, context)
 
-async def category_selected(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def category_selected(update, context):
     query = update.callback_query
     await query.answer()
     category = query.data
     context.user_data["category"] = category
-    print(f"📂 Вибрано категорію: {category}")
+    print(f"📂 Вибрано: {category}")
+    sys.stdout.flush()
     if category in TASK_CATEGORIES:
         keyboard = [[InlineKeyboardButton("⬅️ Назад", callback_data="back_category")]]
         reply_markup = InlineKeyboardMarkup(keyboard)
-        await query.edit_message_text(f"📌 Вибрано: {category}\n\n✏️ Введіть ОПИС задачі:", reply_markup=reply_markup)
+        await query.edit_message_text(f"📌 {category}\n\n✏️ Введіть ОПИС:", reply_markup=reply_markup)
         return DESCRIPTION
     elif category in MEDIA_CATEGORIES:
-        await query.edit_message_text(f"📌 Вибрано: {category}\n\n📝 Введіть НАЗВУ:")
+        await query.edit_message_text(f"📌 {category}\n\n📝 Введіть НАЗВУ:")
         return NAME
     elif category in THOUGHT_CATEGORIES:
         keyboard = [[InlineKeyboardButton("⬅️ Назад", callback_data="back_category")]]
         reply_markup = InlineKeyboardMarkup(keyboard)
-        await query.edit_message_text(f"📌 Вибрано: {category}\n\n🧠 Напишіть думку:", reply_markup=reply_markup)
+        await query.edit_message_text(f"📌 {category}\n\n🧠 Напишіть думку:", reply_markup=reply_markup)
         return DESCRIPTION
-    await query.edit_message_text("❌ Невідома категорія.")
+    await query.edit_message_text("❌ Помилка.")
     return ConversationHandler.END
 
-async def get_description(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def get_description(update, context):
     if update.callback_query:
         query = update.callback_query
         await query.answer()
@@ -155,7 +184,7 @@ async def get_description(update: Update, context: ContextTypes.DEFAULT_TYPE):
     category = context.user_data["category"]
     if category in THOUGHT_CATEGORIES:
         save_to_excel(context.user_data)
-        await update.message.reply_text(f"✅ Збережено!\n📌 Категорія: {category}\n📝 Опис: {context.user_data['description']}")
+        await update.message.reply_text(f"✅ Збережено!")
         return ConversationHandler.END
     keyboard = [
         [InlineKeyboardButton("🔴 Високий", callback_data="Високий")],
@@ -164,10 +193,10 @@ async def get_description(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("⬅️ Назад", callback_data="back_priority")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text("⚡ Оберіть ПРІОРИТЕТ:", reply_markup=reply_markup)
+    await update.message.reply_text("⚡ Пріоритет:", reply_markup=reply_markup)
     return PRIORITY
 
-async def get_priority(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def get_priority(update, context):
     query = update.callback_query
     await query.answer()
     if query.data == "back_priority":
@@ -181,10 +210,10 @@ async def get_priority(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("⬅️ Назад", callback_data="back_responsible")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    await query.edit_message_text("👤 Хто відповідальний? (напишіть або 'Пропустити')", reply_markup=reply_markup)
+    await query.edit_message_text("👤 Відповідальний:", reply_markup=reply_markup)
     return RESPONSIBLE
 
-async def get_responsible(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def get_responsible(update, context):
     if update.callback_query:
         query = update.callback_query
         await query.answer()
@@ -196,7 +225,7 @@ async def get_responsible(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 [InlineKeyboardButton("⬅️ Назад", callback_data="back_priority")]
             ]
             reply_markup = InlineKeyboardMarkup(keyboard)
-            await query.edit_message_text("⚡ Оберіть ПРІОРИТЕТ:", reply_markup=reply_markup)
+            await query.edit_message_text("⚡ Пріоритет:", reply_markup=reply_markup)
             return PRIORITY
         elif query.data == "skip":
             context.user_data["responsible"] = ""
@@ -205,7 +234,7 @@ async def get_responsible(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 [InlineKeyboardButton("⬅️ Назад", callback_data="back_due_date")]
             ]
             reply_markup = InlineKeyboardMarkup(keyboard)
-            await query.edit_message_text("📅 Дата виконання (ДД.ММ.РРРР) або 'Пропустити':", reply_markup=reply_markup)
+            await query.edit_message_text("📅 Дата виконання:", reply_markup=reply_markup)
             return DUE_DATE
     else:
         text = update.message.text
@@ -215,10 +244,10 @@ async def get_responsible(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton("⬅️ Назад", callback_data="back_due_date")]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
-        await update.message.reply_text("📅 Дата виконання (ДД.ММ.РРРР) або 'Пропустити':", reply_markup=reply_markup)
+        await update.message.reply_text("📅 Дата виконання:", reply_markup=reply_markup)
         return DUE_DATE
 
-async def get_due_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def get_due_date(update, context):
     if update.callback_query:
         query = update.callback_query
         await query.answer()
@@ -228,32 +257,30 @@ async def get_due_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 [InlineKeyboardButton("⬅️ Назад", callback_data="back_responsible")]
             ]
             reply_markup = InlineKeyboardMarkup(keyboard)
-            await query.edit_message_text("👤 Хто відповідальний?", reply_markup=reply_markup)
+            await query.edit_message_text("👤 Відповідальний:", reply_markup=reply_markup)
             return RESPONSIBLE
         elif query.data == "skip":
             context.user_data["due_date"] = ""
             save_to_excel(context.user_data)
-            data = context.user_data
-            await query.edit_message_text(f"✅ Збережено!\n📌 Категорія: {data['category']}\n📝 Опис: {data['description']}")
+            await query.edit_message_text("✅ Збережено!")
             return ConversationHandler.END
     else:
         context.user_data["due_date"] = update.message.text
         save_to_excel(context.user_data)
-        data = context.user_data
-        await update.message.reply_text(f"✅ Збережено!\n📌 Категорія: {data['category']}\n📝 Опис: {data['description']}")
+        await update.message.reply_text("✅ Збережено!")
         return ConversationHandler.END
 
-async def get_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def get_name(update, context):
     context.user_data["name"] = update.message.text
     keyboard = [
         [InlineKeyboardButton("⏭️ Пропустити", callback_data="skip")],
         [InlineKeyboardButton("⬅️ Назад", callback_data="back_name")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text("🔗 Введіть ЛІНК (або 'Пропустити'):", reply_markup=reply_markup)
+    await update.message.reply_text("🔗 Лінк:", reply_markup=reply_markup)
     return LINK
 
-async def get_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def get_link(update, context):
     if update.callback_query:
         query = update.callback_query
         await query.answer()
@@ -265,26 +292,28 @@ async def get_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         context.user_data["link"] = update.message.text
     save_to_excel(context.user_data)
-    data = context.user_data
-    await update.message.reply_text(f"✅ Збережено!\n📌 Категорія: {data['category']}\n📝 Назва: {data['name']}")
+    await update.message.reply_text("✅ Збережено!")
     return ConversationHandler.END
 
-async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("❌ Скасовано. /start для нового запису.")
+async def cancel(update, context):
+    await update.message.reply_text("❌ Скасовано.")
     return ConversationHandler.END
 
-# ========== ЗАПУСК ==========
+# ========================================
+# ЗАПУСК
+# ========================================
 def main():
     try:
         print("📦 Створення додатку...")
+        sys.stdout.flush()
         app = Application.builder().token(TOKEN).build()
         print("✅ Додаток створено")
+        sys.stdout.flush()
         
-        # Окремий обробник голосових
         app.add_handler(MessageHandler(filters.VOICE, voice_handler))
         print("✅ Обробник голосових додано")
+        sys.stdout.flush()
         
-        # Основний ConversationHandler
         conv_handler = ConversationHandler(
             entry_points=[
                 CommandHandler("start", start),
@@ -315,18 +344,23 @@ def main():
         )
         app.add_handler(conv_handler)
         print("✅ ConversationHandler додано")
+        sys.stdout.flush()
         
-        print("=" * 50)
-        print("🤖 Бот запущено! /start або голосове 🎤")
-        print("=" * 50)
+        print("=" * 60)
+        print("🤖 БОТ УСПІШНО ЗАПУЩЕНО!")
+        print("📌 Напишіть /start у Telegram")
+        print("=" * 60)
+        sys.stdout.flush()
         
-        # Запуск з polling
         app.run_polling(allowed_updates=Update.ALL_TYPES)
         
     except Exception as e:
         print(f"❌ КРИТИЧНА ПОМИЛКА: {e}")
         import traceback
         traceback.print_exc()
+        sys.stdout.flush()
 
 if __name__ == "__main__":
     main()
+    print("⚠️ Бот завершив роботу")
+    sys.stdout.flush()
