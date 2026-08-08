@@ -20,7 +20,7 @@ sys.stdout.flush()
 # ========================================
 # НАЛАШТУВАННЯ
 # ========================================
-TOKEN = "8768269164:AAHqoOfBA0c4ng_zLoy23sfzajWsNBSJ_9g"
+TOKEN = "8768269164:AAHqK0lKmNSn2L80sej2_6jIb1KRsemTg3g"
 EXCEL_FILE = "notebook.xlsx"
 
 print(f"✅ Токен завантажено: {TOKEN[:10]}...")
