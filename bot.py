@@ -20,7 +20,13 @@ sys.stdout.flush()
 # ========================================
 # НАЛАШТУВАННЯ
 # ========================================
-TOKEN = "8768269164:AAHqoOfBA0c4ng_zLoy23sfzajWsNBSJ_9g"
+# ТОКЕН БЕРЕТЬСЯ ЗІ ЗМІННИХ СЕРЕДОВИЩА (важливо для Koyeb)
+TOKEN = os.environ.get("TOKEN")
+if not TOKEN:
+    print("❌ ПОМИЛКА: Токен не знайдено в змінних середовища!")
+    print("Додайте змінну TOKEN у налаштуваннях Koyeb")
+    sys.exit(1)
+
 EXCEL_FILE = "notebook.xlsx"
 
 print(f"✅ Токен завантажено: {TOKEN[:10]}...")
@@ -200,7 +206,6 @@ async def category_selected(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return ConversationHandler.END
 
 async def get_description(update, context):
-    # Перевіряємо, чи є категорія в context.user_data
     if "category" not in context.user_data:
         await update.message.reply_text("⚠️ Спочатку оберіть категорію через /start")
         return ConversationHandler.END
