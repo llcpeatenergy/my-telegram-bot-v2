@@ -8,7 +8,7 @@ import speech_recognition as sr
 from pydub import AudioSegment
 
 # ========================================
-# ПРИМУСОВЕ ЛОГУВАННЯ (видно в логах Koyeb)
+# ПРИМУСОВЕ ЛОГУВАННЯ
 # ========================================
 print("=" * 60)
 print("🤖 БОТ ЗАПУСКАЄТЬСЯ")
@@ -76,7 +76,6 @@ def save_to_excel(data):
 # КОМАНДА ЗАВАНТАЖЕННЯ EXCEL
 # ========================================
 async def download_excel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Надсилає Excel-файл у Telegram"""
     try:
         if os.path.exists(EXCEL_FILE):
             await update.message.reply_document(
@@ -201,6 +200,11 @@ async def category_selected(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return ConversationHandler.END
 
 async def get_description(update, context):
+    # Перевіряємо, чи є категорія в context.user_data
+    if "category" not in context.user_data:
+        await update.message.reply_text("⚠️ Спочатку оберіть категорію через /start")
+        return ConversationHandler.END
+    
     if update.callback_query:
         query = update.callback_query
         await query.answer()
@@ -209,12 +213,15 @@ async def get_description(update, context):
             reply_markup = InlineKeyboardMarkup(keyboard)
             await query.edit_message_text("📋 Оберіть категорію:", reply_markup=reply_markup)
             return CATEGORY
+    
     context.user_data["description"] = update.message.text
     category = context.user_data["category"]
+    
     if category in THOUGHT_CATEGORIES:
         save_to_excel(context.user_data)
         await update.message.reply_text(f"✅ Збережено!")
         return ConversationHandler.END
+    
     keyboard = [
         [InlineKeyboardButton("🔴 Високий", callback_data="Високий")],
         [InlineKeyboardButton("🟡 Середній", callback_data="Середній")],
@@ -344,7 +351,6 @@ def main():
         print("✅ Додаток створено")
         sys.stdout.flush()
         
-        # Додаємо команду /download
         app.add_handler(CommandHandler("download", download_excel))
         print("✅ Команду /download додано")
         sys.stdout.flush()
