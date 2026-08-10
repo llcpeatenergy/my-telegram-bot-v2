@@ -73,6 +73,23 @@ def save_to_excel(data):
         return False
 
 # ========================================
+# КОМАНДА ЗАВАНТАЖЕННЯ EXCEL
+# ========================================
+async def download_excel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Надсилає Excel-файл у Telegram"""
+    try:
+        if os.path.exists(EXCEL_FILE):
+            await update.message.reply_document(
+                document=open(EXCEL_FILE, 'rb'),
+                filename="notebook.xlsx",
+                caption="📊 Ось ваш файл з нотатками!"
+            )
+        else:
+            await update.message.reply_text("❌ Файл ще не створено. Зробіть хоча б один запис.")
+    except Exception as e:
+        await update.message.reply_text(f"❌ Помилка: {e}")
+
+# ========================================
 # ГОЛОСОВІ
 # ========================================
 async def transcribe_voice(update, context):
@@ -156,7 +173,6 @@ async def category_selected(update: Update, context: ContextTypes.DEFAULT_TYPE):
     print(f"📂 Вибрано: {category}")
     sys.stdout.flush()
     
-    # Кнопка "Назад" для всіх категорій
     back_button = [[InlineKeyboardButton("⬅️ Назад", callback_data="back_category")]]
     back_markup = InlineKeyboardMarkup(back_button)
     
@@ -328,6 +344,11 @@ def main():
         print("✅ Додаток створено")
         sys.stdout.flush()
         
+        # Додаємо команду /download
+        app.add_handler(CommandHandler("download", download_excel))
+        print("✅ Команду /download додано")
+        sys.stdout.flush()
+        
         app.add_handler(MessageHandler(filters.VOICE, voice_handler))
         print("✅ Обробник голосових додано")
         sys.stdout.flush()
@@ -366,7 +387,9 @@ def main():
         
         print("=" * 60)
         print("🤖 БОТ УСПІШНО ЗАПУЩЕНО!")
-        print("📌 Напишіть /start у Telegram")
+        print("📌 Команди:")
+        print("  /start - почати новий запис")
+        print("  /download - завантажити Excel-файл")
         print("=" * 60)
         sys.stdout.flush()
         
