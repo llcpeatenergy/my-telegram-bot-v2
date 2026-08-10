@@ -20,7 +20,6 @@ sys.stdout.flush()
 # ========================================
 # НАЛАШТУВАННЯ
 # ========================================
-# ТОКЕН БЕРЕТЬСЯ ЗІ ЗМІННИХ СЕРЕДОВИЩА (важливо для Koyeb)
 TOKEN = os.environ.get("TOKEN")
 if not TOKEN:
     print("❌ ПОМИЛКА: Токен не знайдено в змінних середовища!")
@@ -40,6 +39,22 @@ CATEGORY, DESCRIPTION, PRIORITY, RESPONSIBLE, DUE_DATE, NAME, LINK = range(7)
 
 print("✅ Налаштування завантажено")
 sys.stdout.flush()
+
+# ========================================
+# ДОПОМІЖНА ФУНКЦІЯ ДЛЯ КНОПОК
+# ========================================
+def get_back_button(step):
+    """Повертає клавіатуру з кнопкою 'Назад' для вказаного кроку"""
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("⬅️ Назад", callback_data=f"back_{step}")]
+    ])
+
+def get_skip_and_back_buttons(step):
+    """Повертає клавіатуру з кнопками 'Пропустити' та 'Назад'"""
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("⏭️ Пропустити", callback_data=f"skip_{step}")],
+        [InlineKeyboardButton("⬅️ Назад", callback_data=f"back_{step}")]
+    ])
 
 # ========================================
 # РОБОТА З EXCEL
@@ -178,55 +193,55 @@ async def category_selected(update: Update, context: ContextTypes.DEFAULT_TYPE):
     print(f"📂 Вибрано: {category}")
     sys.stdout.flush()
     
-    back_button = [[InlineKeyboardButton("⬅️ Назад", callback_data="back_category")]]
-    back_markup = InlineKeyboardMarkup(back_button)
-    
     if category in TASK_CATEGORIES:
         await query.edit_message_text(
             f"📌 {category}\n\n✏️ Введіть ОПИС:",
-            reply_markup=back_markup
+            reply_markup=get_back_button("category")
         )
         return DESCRIPTION
         
     elif category in MEDIA_CATEGORIES:
         await query.edit_message_text(
             f"📌 {category}\n\n📝 Введіть НАЗВУ:",
-            reply_markup=back_markup
+            reply_markup=get_back_button("category")
         )
         return NAME
         
     elif category in THOUGHT_CATEGORIES:
         await query.edit_message_text(
             f"📌 {category}\n\n🧠 Напишіть думку:",
-            reply_markup=back_markup
+            reply_markup=get_back_button("category")
         )
         return DESCRIPTION
         
     await query.edit_message_text("❌ Помилка.")
     return ConversationHandler.END
 
+# ========================================
+# ОБРОБНИКИ ДЛЯ КОЖНОГО КРОКУ
+# ========================================
 async def get_description(update, context):
-    if "category" not in context.user_data:
-        await update.message.reply_text("⚠️ Спочатку оберіть категорію через /start")
-        return ConversationHandler.END
-    
     if update.callback_query:
         query = update.callback_query
         await query.answer()
         if query.data == "back_category":
+            # Повертаємось до вибору категорії
             keyboard = [[InlineKeyboardButton(cat, callback_data=cat)] for cat in CATEGORIES]
             reply_markup = InlineKeyboardMarkup(keyboard)
             await query.edit_message_text("📋 Оберіть категорію:", reply_markup=reply_markup)
             return CATEGORY
+        return DESCRIPTION
     
+    # Якщо це текст — зберігаємо опис
     context.user_data["description"] = update.message.text
     category = context.user_data["category"]
     
     if category in THOUGHT_CATEGORIES:
         save_to_excel(context.user_data)
-        await update.message.reply_text(f"✅ Збережено!")
+        await update.message.reply_text("✅ Збережено!")
         return ConversationHandler.END
     
+    # Переходимо до пріоритету
     keyboard = [
         [InlineKeyboardButton("🔴 Високий", callback_data="Високий")],
         [InlineKeyboardButton("🟡 Середній", callback_data="Середній")],
@@ -240,25 +255,30 @@ async def get_description(update, context):
 async def get_priority(update, context):
     query = update.callback_query
     await query.answer()
+    
     if query.data == "back_priority":
-        keyboard = [[InlineKeyboardButton(cat, callback_data=cat)] for cat in CATEGORIES]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        await query.edit_message_text("📋 Оберіть категорію:", reply_markup=reply_markup)
-        return CATEGORY
+        # Повертаємось до введення опису
+        await query.edit_message_text(
+            f"📌 {context.user_data['category']}\n\n✏️ Введіть ОПИС:",
+            reply_markup=get_back_button("category")
+        )
+        return DESCRIPTION
+    
     context.user_data["priority"] = query.data
-    keyboard = [
-        [InlineKeyboardButton("⏭️ Пропустити", callback_data="skip")],
-        [InlineKeyboardButton("⬅️ Назад", callback_data="back_responsible")]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    await query.edit_message_text("👤 Відповідальний:", reply_markup=reply_markup)
+    # Переходимо до відповідального
+    await query.edit_message_text(
+        "👤 Відповідальний:",
+        reply_markup=get_skip_and_back_buttons("responsible")
+    )
     return RESPONSIBLE
 
 async def get_responsible(update, context):
     if update.callback_query:
         query = update.callback_query
         await query.answer()
+        
         if query.data == "back_responsible":
+            # Повертаємось до пріоритету
             keyboard = [
                 [InlineKeyboardButton("🔴 Високий", callback_data="Високий")],
                 [InlineKeyboardButton("🟡 Середній", callback_data="Середній")],
@@ -268,75 +288,86 @@ async def get_responsible(update, context):
             reply_markup = InlineKeyboardMarkup(keyboard)
             await query.edit_message_text("⚡ Пріоритет:", reply_markup=reply_markup)
             return PRIORITY
-        elif query.data == "skip":
+        
+        elif query.data == "skip_responsible":
             context.user_data["responsible"] = ""
-            keyboard = [
-                [InlineKeyboardButton("⏭️ Пропустити", callback_data="skip")],
-                [InlineKeyboardButton("⬅️ Назад", callback_data="back_due_date")]
-            ]
-            reply_markup = InlineKeyboardMarkup(keyboard)
-            await query.edit_message_text("📅 Дата виконання:", reply_markup=reply_markup)
+            await query.edit_message_text(
+                "📅 Дата виконання:",
+                reply_markup=get_skip_and_back_buttons("due_date")
+            )
             return DUE_DATE
-    else:
-        text = update.message.text
-        context.user_data["responsible"] = text if text.strip() else ""
-        keyboard = [
-            [InlineKeyboardButton("⏭️ Пропустити", callback_data="skip")],
-            [InlineKeyboardButton("⬅️ Назад", callback_data="back_due_date")]
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        await update.message.reply_text("📅 Дата виконання:", reply_markup=reply_markup)
-        return DUE_DATE
+    
+    # Якщо користувач ввів текст
+    context.user_data["responsible"] = update.message.text
+    await update.message.reply_text(
+        "📅 Дата виконання:",
+        reply_markup=get_skip_and_back_buttons("due_date")
+    )
+    return DUE_DATE
 
 async def get_due_date(update, context):
     if update.callback_query:
         query = update.callback_query
         await query.answer()
+        
         if query.data == "back_due_date":
-            keyboard = [
-                [InlineKeyboardButton("⏭️ Пропустити", callback_data="skip")],
-                [InlineKeyboardButton("⬅️ Назад", callback_data="back_responsible")]
-            ]
-            reply_markup = InlineKeyboardMarkup(keyboard)
-            await query.edit_message_text("👤 Відповідальний:", reply_markup=reply_markup)
+            # Повертаємось до відповідального
+            await query.edit_message_text(
+                "👤 Відповідальний:",
+                reply_markup=get_skip_and_back_buttons("responsible")
+            )
             return RESPONSIBLE
-        elif query.data == "skip":
+        
+        elif query.data == "skip_due_date":
             context.user_data["due_date"] = ""
             save_to_excel(context.user_data)
             await query.edit_message_text("✅ Збережено!")
             return ConversationHandler.END
-    else:
-        context.user_data["due_date"] = update.message.text
-        save_to_excel(context.user_data)
-        await update.message.reply_text("✅ Збережено!")
-        return ConversationHandler.END
+    
+    context.user_data["due_date"] = update.message.text
+    save_to_excel(context.user_data)
+    await update.message.reply_text("✅ Збережено!")
+    return ConversationHandler.END
 
 async def get_name(update, context):
+    if update.callback_query:
+        query = update.callback_query
+        await query.answer()
+        if query.data == "back_category":
+            # Повертаємось до вибору категорії
+            keyboard = [[InlineKeyboardButton(cat, callback_data=cat)] for cat in CATEGORIES]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await query.edit_message_text("📋 Оберіть категорію:", reply_markup=reply_markup)
+            return CATEGORY
+        return NAME
+    
     context.user_data["name"] = update.message.text
-    keyboard = [
-        [InlineKeyboardButton("⏭️ Пропустити", callback_data="skip")],
-        [InlineKeyboardButton("⬅️ Назад", callback_data="back_name")]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text("🔗 Лінк:", reply_markup=reply_markup)
+    await update.message.reply_text(
+        "🔗 Лінк:",
+        reply_markup=get_skip_and_back_buttons("link")
+    )
     return LINK
 
 async def get_link(update, context):
     if update.callback_query:
         query = update.callback_query
         await query.answer()
-        if query.data == "back_name":
-            keyboard = [[InlineKeyboardButton("⬅️ Назад", callback_data="back_category")]]
-            reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        if query.data == "back_link":
+            # Повертаємось до введення назви
             await query.edit_message_text(
                 f"📌 {context.user_data['category']}\n\n📝 Введіть НАЗВУ:",
-                reply_markup=reply_markup
+                reply_markup=get_back_button("category")
             )
             return NAME
-        elif query.data == "skip":
+        
+        elif query.data == "skip_link":
             context.user_data["link"] = ""
-    else:
-        context.user_data["link"] = update.message.text
+            save_to_excel(context.user_data)
+            await query.edit_message_text("✅ Збережено!")
+            return ConversationHandler.END
+    
+    context.user_data["link"] = update.message.text
     save_to_excel(context.user_data)
     await update.message.reply_text("✅ Збережено!")
     return ConversationHandler.END
@@ -384,7 +415,10 @@ def main():
                     CallbackQueryHandler(get_due_date),
                     MessageHandler(filters.TEXT & ~filters.COMMAND, get_due_date)
                 ],
-                NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_name)],
+                NAME: [
+                    CallbackQueryHandler(get_name),
+                    MessageHandler(filters.TEXT & ~filters.COMMAND, get_name)
+                ],
                 LINK: [
                     CallbackQueryHandler(get_link),
                     MessageHandler(filters.TEXT & ~filters.COMMAND, get_link)
