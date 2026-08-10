@@ -20,7 +20,7 @@ sys.stdout.flush()
 # ========================================
 # НАЛАШТУВАННЯ
 # ========================================
-TOKEN = "8768269164:AAHqK0lKmNSn2L80sej2_6jIb1KRsemTg3g"
+TOKEN = "8768269164:AAHqoOfBA0c4ng_zLoy23sfzajWsNBSJ_9g"
 EXCEL_FILE = "notebook.xlsx"
 
 print(f"✅ Токен завантажено: {TOKEN[:10]}...")
@@ -148,26 +148,39 @@ async def start(update, context):
 async def handle_text(update, context):
     return await start(update, context)
 
-async def category_selected(update, context):
+async def category_selected(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     category = query.data
     context.user_data["category"] = category
     print(f"📂 Вибрано: {category}")
     sys.stdout.flush()
+    
+    # Кнопка "Назад" для всіх категорій
+    back_button = [[InlineKeyboardButton("⬅️ Назад", callback_data="back_category")]]
+    back_markup = InlineKeyboardMarkup(back_button)
+    
     if category in TASK_CATEGORIES:
-        keyboard = [[InlineKeyboardButton("⬅️ Назад", callback_data="back_category")]]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        await query.edit_message_text(f"📌 {category}\n\n✏️ Введіть ОПИС:", reply_markup=reply_markup)
+        await query.edit_message_text(
+            f"📌 {category}\n\n✏️ Введіть ОПИС:",
+            reply_markup=back_markup
+        )
         return DESCRIPTION
+        
     elif category in MEDIA_CATEGORIES:
-        await query.edit_message_text(f"📌 {category}\n\n📝 Введіть НАЗВУ:")
+        await query.edit_message_text(
+            f"📌 {category}\n\n📝 Введіть НАЗВУ:",
+            reply_markup=back_markup
+        )
         return NAME
+        
     elif category in THOUGHT_CATEGORIES:
-        keyboard = [[InlineKeyboardButton("⬅️ Назад", callback_data="back_category")]]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        await query.edit_message_text(f"📌 {category}\n\n🧠 Напишіть думку:", reply_markup=reply_markup)
+        await query.edit_message_text(
+            f"📌 {category}\n\n🧠 Напишіть думку:",
+            reply_markup=back_markup
+        )
         return DESCRIPTION
+        
     await query.edit_message_text("❌ Помилка.")
     return ConversationHandler.END
 
@@ -285,7 +298,12 @@ async def get_link(update, context):
         query = update.callback_query
         await query.answer()
         if query.data == "back_name":
-            await query.edit_message_text(f"📌 {context.user_data['category']}\n\n📝 Введіть НАЗВУ:")
+            keyboard = [[InlineKeyboardButton("⬅️ Назад", callback_data="back_category")]]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await query.edit_message_text(
+                f"📌 {context.user_data['category']}\n\n📝 Введіть НАЗВУ:",
+                reply_markup=reply_markup
+            )
             return NAME
         elif query.data == "skip":
             context.user_data["link"] = ""
