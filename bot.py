@@ -2,6 +2,7 @@ import sys
 import os
 import openpyxl
 from datetime import datetime, timedelta
+import pytz
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ConversationHandler, ContextTypes
 import speech_recognition as sr
@@ -29,9 +30,11 @@ if not TOKEN:
     sys.exit(1)
 
 EXCEL_FILE = "notebook.xlsx"
-CHECK_INTERVAL = 60  # Перевіряємо нагадування кожні 60 секунд
+CHECK_INTERVAL = 60
+UKRAINE_TZ = pytz.timezone('Europe/Kyiv')  # ВАШ ЧАСОВИЙ ПОЯС
 
 print(f"✅ Токен завантажено: {TOKEN[:10]}...")
+print(f"✅ Часовий пояс: {UKRAINE_TZ}")
 sys.stdout.flush()
 
 CATEGORIES = ["ТЕК", "Ідеї", "Особисті", "Книги", "Фільми", "Що відвідати", "Цікаві думки"]
@@ -88,9 +91,12 @@ def save_to_excel(data):
             sheet = wb.active
             sheet.append(get_headers())
         
+        # Поточний час у вашому часовому поясі
+        now_ukraine = datetime.now(UKRAINE_TZ)
+        
         row = [
             data.get("category", ""),
-            datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            now_ukraine.strftime("%Y-%m-%d %H:%M:%S"),
             data.get("description", ""),
             data.get("priority", ""),
             data.get("responsible", ""),
@@ -184,13 +190,15 @@ def check_reminders():
                 break
         if not reminder_col:
             return reminders
-        now = datetime.now()
+        # Поточний час у вашому часовому поясі
+        now_ukraine = datetime.now(UKRAINE_TZ)
         for idx, row in enumerate(sheet.iter_rows(min_row=2, values_only=False)):
             reminder_value = row[reminder_col - 1].value
             if reminder_value and isinstance(reminder_value, str):
                 try:
                     reminder_time = datetime.strptime(reminder_value, "%Y-%m-%d %H:%M")
-                    if reminder_time <= now:
+                    # Порівнюємо з вашим часом
+                    if reminder_time <= now_ukraine:
                         reminders.append({
                             "row_index": idx,
                             "row": row,
@@ -209,10 +217,9 @@ def check_reminders():
     return reminders
 
 # ========================================
-# ФОНОВИЙ ПРОЦЕС ДЛЯ НАГАДУВАНЬ (З НАДСИЛАННЯМ У ЧАТ)
+# ФОНОВИЙ ПРОЦЕС ДЛЯ НАГАДУВАНЬ
 # ========================================
 async def reminder_loop(app: Application):
-    """Фоновий процес перевірки нагадувань з надсиланням у чат"""
     while True:
         try:
             reminders = check_reminders()
@@ -376,7 +383,6 @@ async def voice_handler(update, context):
 # ОСНОВНІ ФУНКЦІЇ
 # ========================================
 async def start(update, context):
-    # Зберігаємо chat_id для надсилання нагадувань
     context.bot_data["chat_id"] = update.effective_chat.id
     print(f"📩 /start від {update.effective_user.username}, chat_id: {update.effective_chat.id}")
     sys.stdout.flush()
@@ -597,11 +603,16 @@ async def get_reminder_time(update, context):
     
     reminder_text = update.message.text.strip()
     try:
-        reminder_time = datetime.strptime(reminder_text, "%d.%m.%Y %H:%M")
-        context.user_data["reminder_time"] = reminder_time.strftime("%Y-%m-%d %H:%M")
+        # Перетворюємо місцевий час у UTC для зберігання
+        local_time = datetime.strptime(reminder_text, "%d.%m.%Y %H:%M")
+        ukraine_time = UKRAINE_TZ.localize(local_time)
+        utc_time = ukraine_time.astimezone(pytz.UTC)
+        utc_time_str = utc_time.strftime("%Y-%m-%d %H:%M")
+        
+        context.user_data["reminder_time"] = utc_time_str
         save_to_excel(context.user_data)
         await update.message.reply_text(
-            f"✅ Збережено! Нагадування встановлено на {reminder_text}"
+            f"✅ Збережено! Нагадування встановлено на {reminder_text} (за вашим часом)"
         )
         context.user_data.clear()
         return ConversationHandler.END
