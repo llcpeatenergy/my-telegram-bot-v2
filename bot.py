@@ -11,28 +11,44 @@ import asyncio
 import traceback
 
 # ========================================
-# ПРИМУСОВЕ ЛОГУВАННЯ ТА НАЛАШТУВАННЯ PATH
+# ПЕРЕВІРКА FFMPEG
 # ========================================
+def check_ffmpeg():
+    """Перевіряє наявність та працездатність ffmpeg"""
+    try:
+        # Можливі шляхи до ffmpeg
+        paths = ["/usr/local/bin/ffmpeg", "/usr/bin/ffmpeg", "ffmpeg"]
+        for path in paths:
+            try:
+                result = subprocess.run([path, "-version"], capture_output=True, text=True, timeout=5)
+                if result.returncode == 0:
+                    print(f"✅ ffmpeg знайдено за шляхом: {path}")
+                    return path
+            except (subprocess.TimeoutExpired, FileNotFoundError, PermissionError):
+                continue
+        print("❌ ffmpeg не знайдено. Голосові не працюватимуть.")
+        return None
+    except Exception as e:
+        print(f"❌ Помилка перевірки ffmpeg: {e}")
+        return None
+
+# Додаємо ffmpeg в PATH, якщо знайдено
+FFMPEG_PATH = check_ffmpeg()
+if FFMPEG_PATH:
+    # Додаємо шлях до ffmpeg в PATH
+    ffmpeg_dir = os.path.dirname(FFMPEG_PATH)
+    if ffmpeg_dir:
+        os.environ["PATH"] += os.pathsep + ffmpeg_dir
+    print(f"✅ PATH оновлено: {os.environ['PATH']}")
+else:
+    print("⚠️ ffmpeg не знайдено. Голосові повідомлення не працюватимуть.")
+
+# Примусове логування
 print("=" * 60)
 print("🤖 БОТ ЗАПУСКАЄТЬСЯ")
 print(f"Python версія: {sys.version}")
 print(f"Поточна папка: {os.getcwd()}")
 print("=" * 60)
-sys.stdout.flush()
-
-# Додаємо ffmpeg в PATH, якщо він є
-os.environ["PATH"] += os.pathsep + "/usr/local/bin"
-os.environ["PATH"] += os.pathsep + "/usr/bin"
-
-# Перевіряємо ffmpeg
-try:
-    result = subprocess.run(["ffmpeg", "-version"], capture_output=True, text=True)
-    if result.returncode == 0:
-        print("✅ ffmpeg знайдено та працює")
-    else:
-        print("⚠️ ffmpeg знайдено, але не працює")
-except FileNotFoundError:
-    print("❌ ffmpeg не знайдено. Голосові не працюватимуть.")
 sys.stdout.flush()
 
 # ========================================
@@ -336,21 +352,53 @@ async def transcribe_voice(update, context):
         os.makedirs("temp", exist_ok=True)
         ogg_path = f"temp/voice_{datetime.now().strftime('%Y%m%d_%H%M%S')}.ogg"
         await file.download_to_drive(ogg_path)
+        
+        # Перевіряємо, чи є ffmpeg
+        if FFMPEG_PATH is None:
+            await update.message.reply_text("❌ ffmpeg не знайдено. Голосові не працюють.")
+            return None
+        
+        # Конвертуємо .ogg в .wav
         wav_path = ogg_path.replace(".ogg", ".wav")
-        audio = AudioSegment.from_ogg(ogg_path)
-        audio.export(wav_path, format="wav")
+        try:
+            audio = AudioSegment.from_ogg(ogg_path)
+            audio.export(wav_path, format="wav")
+        except Exception as e:
+            print(f"❌ Помилка конвертації: {e}")
+            await update.message.reply_text("❌ Помилка обробки голосового файлу.")
+            os.remove(ogg_path)
+            return None
+        
+        # Розпізнаємо
         recognizer = sr.Recognizer()
-        with sr.AudioFile(wav_path) as source:
-            audio_data = recognizer.record(source)
+        try:
+            with sr.AudioFile(wav_path) as source:
+                audio_data = recognizer.record(source)
+        except Exception as e:
+            print(f"❌ Помилка читання аудіо: {e}")
+            await update.message.reply_text("❌ Помилка читання голосового файлу.")
+            os.remove(ogg_path)
+            os.remove(wav_path)
+            return None
+        
         text = None
         for lang in ["uk-UA", "ru-RU", "en-US"]:
             try:
                 text = recognizer.recognize_google(audio_data, language=lang)
-                break
-            except:
+                if text:
+                    break
+            except sr.UnknownValueError:
                 continue
+            except sr.RequestError as e:
+                print(f"❌ Помилка Google API: {e}")
+                await update.message.reply_text("❌ Помилка підключення до Google API.")
+                os.remove(ogg_path)
+                os.remove(wav_path)
+                return None
+        
         os.remove(ogg_path)
         os.remove(wav_path)
+        
         if text:
             return text
         await update.message.reply_text("❌ Не вдалося розпізнати голос.")
@@ -385,7 +433,7 @@ async def voice_handler(update, context):
 # ОСНОВНІ ФУНКЦІЇ
 # ========================================
 async def start(update, context):
-    # ЗБЕРІГАЄМО CHAT_ID ДЛЯ НАГАДУВАНЬ
+    # Зберігаємо chat_id для нагадувань
     context.bot_data["chat_id"] = update.effective_chat.id
     print(f"📩 /start від {update.effective_user.username}, chat_id: {update.effective_chat.id}")
     sys.stdout.flush()
