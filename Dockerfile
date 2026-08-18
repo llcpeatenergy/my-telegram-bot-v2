@@ -2,7 +2,6 @@ FROM python:3.11-slim-bookworm
 
 WORKDIR /app
 
-# Встановлюємо ffmpeg з Bookworm (стабільна версія Debian)
 RUN apt-get update && apt-get install -y \
     ffmpeg \
     && apt-get clean \
