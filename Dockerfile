@@ -1,30 +1,24 @@
-# Етап 1: Завантажуємо статичний ffmpeg
-FROM alpine:latest AS downloader
+# Використовуємо образ із попередньо встановленим ffmpeg
+FROM jrottenberg/ffmpeg:4.1-alpine AS ffmpeg_stage
 
-# Встановлюємо необхідні інструменти
-RUN apk add --no-cache wget tar xz
-
-# Завантажуємо та розпаковуємо статичний ffmpeg
-RUN wget -O /ffmpeg.tar.xz https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz \
-    && tar -xJf /ffmpeg.tar.xz \
-    && ls -la
-
-# Етап 2: Основний образ для бота
+# Основний образ
 FROM python:3.11-slim
 
-# Копіюємо статичний ffmpeg
-COPY --from=downloader /ffmpeg-*-amd64-static/ffmpeg /usr/local/bin/ffmpeg
-COPY --from=downloader /ffmpeg-*-amd64-static/ffprobe /usr/local/bin/ffprobe
+# Копіюємо ffmpeg та ffprobe з першого етапу
+COPY --from=ffmpeg_stage /usr/local/bin/ffmpeg /usr/local/bin/ffmpeg
+COPY --from=ffmpeg_stage /usr/local/bin/ffprobe /usr/local/bin/ffprobe
 
 # Перевіряємо, що ffmpeg працює
-RUN chmod +x /usr/local/bin/ffmpeg && /usr/local/bin/ffmpeg -version
+RUN /usr/local/bin/ffmpeg -version
 
 WORKDIR /app
 
-# Встановлюємо залежності Python
+# Копіюємо та встановлюємо залежності Python
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Копіюємо код бота
 COPY bot.py .
 
+# Запускаємо бота
 CMD ["python", "-u", "bot.py"]
