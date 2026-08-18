@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, timezone
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ConversationHandler, ContextTypes
 import speech_recognition as sr
+from pydub import AudioSegment
 import asyncio
 import traceback
 
@@ -249,7 +250,6 @@ async def reminder_loop(app: Application):
             if reminders:
                 for reminder in reminders:
                     try:
-                        # Спочатку пробуємо взяти chat_id з файлу
                         chat_id = load_chat_id()
                         if not chat_id:
                             chat_id = app.bot_data.get("chat_id")
@@ -350,61 +350,39 @@ async def handle_new_reminder_time(update: Update, context: ContextTypes.DEFAULT
         return REMINDER_ACTION
 
 # ========================================
-# ГОЛОСОВІ (БЕЗ FFMPEG)
+# ГОЛОСОВІ (РОБОЧА ВЕРСІЯ)
 # ========================================
 async def transcribe_voice(update, context):
     try:
         await update.message.reply_text("🎤 Обробляю голосове...")
         voice = update.message.voice
-        
-        # Перевіряємо тривалість
-        if voice.duration < 1.5:
-            await update.message.reply_text("❌ Голосове занадто коротке. Говоріть хоча б 2 секунди.")
-            return None
-        
         file = await context.bot.get_file(voice.file_id)
         os.makedirs("temp", exist_ok=True)
         ogg_path = f"temp/voice_{datetime.now().strftime('%Y%m%d_%H%M%S')}.ogg"
         await file.download_to_drive(ogg_path)
-        
-        # Розпізнаємо напряму з .ogg
+        wav_path = ogg_path.replace(".ogg", ".wav")
+        audio = AudioSegment.from_ogg(ogg_path)
+        audio.export(wav_path, format="wav")
         recognizer = sr.Recognizer()
-        try:
-            with sr.AudioFile(ogg_path) as source:
-                recognizer.adjust_for_ambient_noise(source, duration=0.3)
-                audio_data = recognizer.record(source)
-        except Exception as e:
-            print(f"❌ Помилка читання аудіо: {e}")
-            await update.message.reply_text("❌ Помилка читання голосового файлу.")
-            os.remove(ogg_path)
-            return None
-        
-        # Пробуємо різні мови
+        with sr.AudioFile(wav_path) as source:
+            audio_data = recognizer.record(source)
         text = None
         for lang in ["uk-UA", "ru-RU", "en-US"]:
             try:
                 text = recognizer.recognize_google(audio_data, language=lang)
-                if text and len(text) > 2:
+                if text:
                     break
-            except sr.UnknownValueError:
+            except:
                 continue
-            except sr.RequestError:
-                await update.message.reply_text("❌ Помилка Google API. Перевірте інтернет.")
-                os.remove(ogg_path)
-                return None
-            except Exception as e:
-                print(f"❌ Помилка: {e}")
-                continue
-        
         os.remove(ogg_path)
-        
-        if text and len(text) > 2:
+        os.remove(wav_path)
+        if text:
             return text
-        await update.message.reply_text("❌ Не вдалося розпізнати голос. Спробуйте чіткіше.")
+        await update.message.reply_text("❌ Не вдалося розпізнати голос.")
         return None
-        
     except Exception as e:
         print(f"❌ Помилка розпізнавання: {e}")
+        sys.stdout.flush()
         await update.message.reply_text("❌ Помилка обробки голосового.")
         return None
 
@@ -412,11 +390,9 @@ async def voice_handler(update, context):
     if "category" not in context.user_data:
         await update.message.reply_text("⚠️ Спочатку оберіть категорію через /start")
         return
-    
     text = await transcribe_voice(update, context)
     if not text:
         return
-    
     context.user_data["description"] = text
     category = context.user_data["category"]
     if category in THOUGHT_CATEGORIES:
@@ -434,7 +410,6 @@ async def voice_handler(update, context):
 # ОСНОВНІ ФУНКЦІЇ
 # ========================================
 async def start(update, context):
-    # Зберігаємо chat_id у файл
     chat_id = update.effective_chat.id
     save_chat_id(chat_id)
     context.bot_data["chat_id"] = chat_id
