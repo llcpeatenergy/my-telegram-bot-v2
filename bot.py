@@ -11,12 +11,20 @@ import asyncio
 import traceback
 
 # ========================================
+# ПРИМУСОВЕ ЛОГУВАННЯ (ДЛЯ ПЕРЕВІРКИ ЗАПУСКУ)
+# ========================================
+print("=" * 60)
+print("🚀 БОТ ПОЧИНАЄ РОБОТУ")
+print(f"Python версія: {sys.version}")
+print(f"Поточна папка: {os.getcwd()}")
+print("=" * 60)
+sys.stdout.flush()
+
+# ========================================
 # ПЕРЕВІРКА FFMPEG
 # ========================================
 def check_ffmpeg():
-    """Перевіряє наявність та працездатність ffmpeg"""
     try:
-        # Можливі шляхи до ffmpeg
         paths = ["/usr/local/bin/ffmpeg", "/usr/bin/ffmpeg", "ffmpeg"]
         for path in paths:
             try:
@@ -24,31 +32,22 @@ def check_ffmpeg():
                 if result.returncode == 0:
                     print(f"✅ ffmpeg знайдено за шляхом: {path}")
                     return path
-            except (subprocess.TimeoutExpired, FileNotFoundError, PermissionError):
+            except:
                 continue
-        print("❌ ffmpeg не знайдено. Голосові не працюватимуть.")
+        print("❌ ffmpeg не знайдено")
         return None
     except Exception as e:
         print(f"❌ Помилка перевірки ffmpeg: {e}")
         return None
 
-# Додаємо ffmpeg в PATH, якщо знайдено
 FFMPEG_PATH = check_ffmpeg()
 if FFMPEG_PATH:
-    # Додаємо шлях до ffmpeg в PATH
     ffmpeg_dir = os.path.dirname(FFMPEG_PATH)
     if ffmpeg_dir:
         os.environ["PATH"] += os.pathsep + ffmpeg_dir
-    print(f"✅ PATH оновлено: {os.environ['PATH']}")
+        print(f"✅ PATH оновлено: {os.environ['PATH']}")
 else:
     print("⚠️ ffmpeg не знайдено. Голосові повідомлення не працюватимуть.")
-
-# Примусове логування
-print("=" * 60)
-print("🤖 БОТ ЗАПУСКАЄТЬСЯ")
-print(f"Python версія: {sys.version}")
-print(f"Поточна папка: {os.getcwd()}")
-print("=" * 60)
 sys.stdout.flush()
 
 # ========================================
@@ -353,12 +352,10 @@ async def transcribe_voice(update, context):
         ogg_path = f"temp/voice_{datetime.now().strftime('%Y%m%d_%H%M%S')}.ogg"
         await file.download_to_drive(ogg_path)
         
-        # Перевіряємо, чи є ffmpeg
         if FFMPEG_PATH is None:
             await update.message.reply_text("❌ ffmpeg не знайдено. Голосові не працюють.")
             return None
         
-        # Конвертуємо .ogg в .wav
         wav_path = ogg_path.replace(".ogg", ".wav")
         try:
             audio = AudioSegment.from_ogg(ogg_path)
@@ -369,7 +366,6 @@ async def transcribe_voice(update, context):
             os.remove(ogg_path)
             return None
         
-        # Розпізнаємо
         recognizer = sr.Recognizer()
         try:
             with sr.AudioFile(wav_path) as source:
@@ -433,7 +429,6 @@ async def voice_handler(update, context):
 # ОСНОВНІ ФУНКЦІЇ
 # ========================================
 async def start(update, context):
-    # Зберігаємо chat_id для нагадувань
     context.bot_data["chat_id"] = update.effective_chat.id
     print(f"📩 /start від {update.effective_user.username}, chat_id: {update.effective_chat.id}")
     sys.stdout.flush()
@@ -838,5 +833,5 @@ def main():
 
 if __name__ == "__main__":
     main()
-    print("⚠️ Бот завершив роботу")
+    print("🚀 Бот завершив роботу")
     sys.stdout.flush()
