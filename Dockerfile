@@ -1,16 +1,20 @@
-# Етап 1: Завантажуємо статично зібраний ffmpeg
+# Етап 1: Завантажуємо статичний ffmpeg
 FROM alpine:latest AS downloader
-RUN apk add --no-cache wget tar
+
+# Встановлюємо необхідні інструменти
+RUN apk add --no-cache wget tar xz
+
+# Завантажуємо та розпаковуємо статичний ffmpeg
 RUN wget -O /ffmpeg.tar.xz https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz \
-    && tar -xf /ffmpeg.tar.xz --strip-components=1 -C / \
-    && ls -la /ffmpeg
+    && tar -xJf /ffmpeg.tar.xz \
+    && ls -la
 
 # Етап 2: Основний образ для бота
 FROM python:3.11-slim
 
 # Копіюємо статичний ffmpeg
-COPY --from=downloader /ffmpeg/ffmpeg /usr/local/bin/ffmpeg
-COPY --from=downloader /ffmpeg/ffprobe /usr/local/bin/ffprobe
+COPY --from=downloader /ffmpeg-*-amd64-static/ffmpeg /usr/local/bin/ffmpeg
+COPY --from=downloader /ffmpeg-*-amd64-static/ffprobe /usr/local/bin/ffprobe
 
 # Перевіряємо, що ffmpeg працює
 RUN chmod +x /usr/local/bin/ffmpeg && /usr/local/bin/ffmpeg -version
