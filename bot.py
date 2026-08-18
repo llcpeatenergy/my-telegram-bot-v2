@@ -1,6 +1,5 @@
 import sys
 import os
-import subprocess
 import openpyxl
 from datetime import datetime, timedelta, timezone
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
@@ -9,45 +8,14 @@ import speech_recognition as sr
 from pydub import AudioSegment
 import asyncio
 import traceback
+import io
 
-# ========================================
-# ПЕРЕВІРКА FFMPEG
-# ========================================
-def find_ffmpeg():
-    """Знаходить ffmpeg у системі"""
-    possible_paths = [
-        "/usr/bin/ffmpeg",
-        "/usr/local/bin/ffmpeg",
-        "/app/ffmpeg",
-        "ffmpeg"
-    ]
-    for path in possible_paths:
-        try:
-            result = subprocess.run([path, "-version"], capture_output=True, timeout=3)
-            if result.returncode == 0:
-                print(f"✅ ffmpeg знайдено: {path}")
-                return path
-        except:
-            continue
-    print("❌ ffmpeg не знайдено")
-    return None
-
-FFMPEG_PATH = find_ffmpeg()
-if FFMPEG_PATH:
-    os.environ["PATH"] = os.path.dirname(FFMPEG_PATH) + os.pathsep + os.environ["PATH"]
-
-# ========================================
-# ЛОГУВАННЯ
-# ========================================
 print("=" * 60)
 print("🤖 БОТ ЗАПУСКАЄТЬСЯ")
 print(f"Python: {sys.version}")
 print("=" * 60)
 sys.stdout.flush()
 
-# ========================================
-# НАЛАШТУВАННЯ
-# ========================================
 TOKEN = os.environ.get("TOKEN")
 if not TOKEN:
     print("❌ ТОКЕН НЕ ЗНАЙДЕНО!")
@@ -65,9 +33,6 @@ CATEGORY, DESCRIPTION, PRIORITY, RESPONSIBLE, DUE_DATE, NAME, LINK = range(7)
 REMINDER_TIME = 7
 REMINDER_ACTION = 8
 
-# ========================================
-# КНОПКИ
-# ========================================
 def get_back_button(step):
     return InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Назад", callback_data=f"back_{step}")]])
 
@@ -86,9 +51,6 @@ def get_reminder_action_keyboard(row_index):
         [InlineKeyboardButton("✅ Виконано", callback_data=f"done_remind_{row_index}")]
     ])
 
-# ========================================
-# EXCEL
-# ========================================
 def get_headers():
     return ["Категорія", "Дата", "Опис", "Пріоритет", "Хто відповідальний", 
             "Дата виконання", "Назва", "Лінк", "Нагадати о"]
@@ -117,7 +79,6 @@ def save_to_excel(data):
         ]
         sheet.append(row)
         wb.save(EXCEL_FILE)
-        print("✅ Excel збережено")
         return True
     except Exception as e:
         print(f"❌ Помилка Excel: {e}")
@@ -195,9 +156,6 @@ def update_reminder_time(row_index, new_time):
         pass
     return False
 
-# ========================================
-# НАГАДУВАННЯ (ФОН)
-# ========================================
 async def reminder_loop(app):
     while True:
         try:
@@ -215,9 +173,6 @@ async def reminder_loop(app):
             pass
         await asyncio.sleep(CHECK_INTERVAL)
 
-# ========================================
-# КОМАНДИ
-# ========================================
 async def start(update, context):
     context.bot_data["chat_id"] = update.effective_chat.id
     await update.message.reply_text("📋 Оберіть категорію:", reply_markup=get_category_keyboard())
@@ -452,13 +407,9 @@ async def error_handler(update, context):
     print(f"❌ Помилка: {context.error}")
 
 # ========================================
-# ГОЛОСОВІ (З FFMPEG)
+# НОВА ФУНКЦІЯ ДЛЯ ГОЛОСОВИХ (БЕЗ FFMPEG)
 # ========================================
 async def transcribe_voice(update, context):
-    if not FFMPEG_PATH:
-        await update.message.reply_text("❌ ffmpeg не знайдено. Голосові не працюють.")
-        return None
-    
     try:
         await update.message.reply_text("🎤 Обробляю голосове...")
         voice = update.message.voice
@@ -468,10 +419,12 @@ async def transcribe_voice(update, context):
         ogg_path = f"temp/voice_{datetime.now().strftime('%Y%m%d_%H%M%S')}.ogg"
         await file.download_to_drive(ogg_path)
         
+        # Конвертуємо .ogg в .wav (без ffmpeg, через pydub)
         wav_path = ogg_path.replace(".ogg", ".wav")
         audio = AudioSegment.from_ogg(ogg_path)
         audio.export(wav_path, format="wav")
         
+        # Розпізнаємо через Google Speech Recognition
         recognizer = sr.Recognizer()
         with sr.AudioFile(wav_path) as source:
             audio_data = recognizer.record(source)
@@ -490,16 +443,16 @@ async def transcribe_voice(update, context):
         
         if text:
             return text
-        await update.message.reply_text("❌ Не вдалося розпізнати")
+        await update.message.reply_text("❌ Не вдалося розпізнати голос.")
         return None
     except Exception as e:
-        print(f"❌ Помилка: {e}")
-        await update.message.reply_text("❌ Помилка обробки")
+        print(f"❌ Помилка розпізнавання: {e}")
+        await update.message.reply_text("❌ Помилка обробки голосового.")
         return None
 
 async def voice_handler(update, context):
     if "category" not in context.user_data:
-        await update.message.reply_text("⚠️ Оберіть категорію")
+        await update.message.reply_text("⚠️ Спочатку оберіть категорію через /start")
         return
     
     text = await transcribe_voice(update, context)
@@ -581,6 +534,7 @@ def main():
         print("🤖 БОТ УСПІШНО ЗАПУЩЕНО!")
         print("📌 /start - новий запис")
         print("📌 /download - завантажити Excel")
+        print("🎤 Голосові повідомлення працюють")
         print("=" * 60)
         
         app.run_polling()
