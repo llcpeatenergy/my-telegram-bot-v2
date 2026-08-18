@@ -4,11 +4,9 @@ import openpyxl
 from datetime import datetime, timedelta, timezone
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ConversationHandler, ContextTypes
-import speech_recognition as sr
-from pydub import AudioSegment
+import whisper
 import asyncio
 import traceback
-import io
 
 print("=" * 60)
 print("🤖 БОТ ЗАПУСКАЄТЬСЯ")
@@ -32,6 +30,12 @@ THOUGHT_CATEGORIES = ["Цікаві думки"]
 CATEGORY, DESCRIPTION, PRIORITY, RESPONSIBLE, DUE_DATE, NAME, LINK = range(7)
 REMINDER_TIME = 7
 REMINDER_ACTION = 8
+
+# Завантажуємо модель Whisper (один раз при запуску)
+print("🎤 Завантаження моделі Whisper...")
+model = whisper.load_model("base")
+print("✅ Модель Whisper завантажено")
+sys.stdout.flush()
 
 def get_back_button(step):
     return InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Назад", callback_data=f"back_{step}")]])
@@ -407,7 +411,7 @@ async def error_handler(update, context):
     print(f"❌ Помилка: {context.error}")
 
 # ========================================
-# НОВА ФУНКЦІЯ ДЛЯ ГОЛОСОВИХ (БЕЗ FFMPEG)
+# НОВА ФУНКЦІЯ ДЛЯ ГОЛОСОВИХ (WHISPER - БЕЗ FFMPEG)
 # ========================================
 async def transcribe_voice(update, context):
     try:
@@ -419,30 +423,12 @@ async def transcribe_voice(update, context):
         ogg_path = f"temp/voice_{datetime.now().strftime('%Y%m%d_%H%M%S')}.ogg"
         await file.download_to_drive(ogg_path)
         
-        # Конвертуємо .ogg в .wav (без ffmpeg, через pydub)
-        wav_path = ogg_path.replace(".ogg", ".wav")
-        audio = AudioSegment.from_ogg(ogg_path)
-        audio.export(wav_path, format="wav")
-        
-        # Розпізнаємо через Google Speech Recognition
-        recognizer = sr.Recognizer()
-        with sr.AudioFile(wav_path) as source:
-            audio_data = recognizer.record(source)
-        
-        text = None
-        for lang in ["uk-UA", "ru-RU", "en-US"]:
-            try:
-                text = recognizer.recognize_google(audio_data, language=lang)
-                if text:
-                    break
-            except:
-                continue
-        
+        # Використовуємо Whisper (без ffmpeg)
+        result = model.transcribe(ogg_path, language="uk")
         os.remove(ogg_path)
-        os.remove(wav_path)
         
-        if text:
-            return text
+        if result["text"]:
+            return result["text"]
         await update.message.reply_text("❌ Не вдалося розпізнати голос.")
         return None
     except Exception as e:
@@ -534,7 +520,7 @@ def main():
         print("🤖 БОТ УСПІШНО ЗАПУЩЕНО!")
         print("📌 /start - новий запис")
         print("📌 /download - завантажити Excel")
-        print("🎤 Голосові повідомлення працюють")
+        print("🎤 Голосові повідомлення працюють через Whisper")
         print("=" * 60)
         
         app.run_polling()
