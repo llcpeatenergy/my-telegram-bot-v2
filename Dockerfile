@@ -1,9 +1,14 @@
+FROM linuxserver/ffmpeg:latest AS ffmpeg
+
 FROM python:3.11-slim
 
-WORKDIR /app
+COPY --from=ffmpeg /usr/local/bin/ffmpeg /usr/local/bin/ffmpeg
+COPY --from=ffmpeg /usr/local/bin/ffprobe /usr/local/bin/ffprobe
 
-# Встановлюємо ffmpeg (це вирішить проблему з голосовими)
-RUN apt-get update && apt-get install -y ffmpeg && apt-get clean
+# Даємо права на виконання
+RUN chmod +x /usr/local/bin/ffmpeg /usr/local/bin/ffprobe
+
+WORKDIR /app
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
