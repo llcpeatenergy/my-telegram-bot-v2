@@ -1,18 +1,19 @@
+FROM jrottenberg/ffmpeg:4.1-ubuntu AS ffmpeg
+
 FROM python:3.11-slim
+
+# Копіюємо ffmpeg з готового образу
+COPY --from=ffmpeg /usr/local/bin/ffmpeg /usr/local/bin/ffmpeg
+COPY --from=ffmpeg /usr/local/bin/ffprobe /usr/local/bin/ffprobe
+
+# Перевіряємо, що ffmpeg працює
+RUN /usr/local/bin/ffmpeg -version
 
 WORKDIR /app
 
-# Встановлюємо необхідні пакети
-RUN apt-get update && apt-get install -y \
-    ffmpeg \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
-
-# Копіюємо файли
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY bot.py .
 
-# Запускаємо бота
 CMD ["python", "-u", "bot.py"]
