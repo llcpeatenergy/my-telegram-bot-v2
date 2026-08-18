@@ -4,8 +4,6 @@ import openpyxl
 from datetime import datetime, timedelta, timezone
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ConversationHandler, ContextTypes
-import speech_recognition as sr
-from pydub import AudioSegment
 import asyncio
 import traceback
 
@@ -350,63 +348,6 @@ async def handle_new_reminder_time(update: Update, context: ContextTypes.DEFAULT
         return REMINDER_ACTION
 
 # ========================================
-# ГОЛОСОВІ (РОБОЧА ВЕРСІЯ)
-# ========================================
-async def transcribe_voice(update, context):
-    try:
-        await update.message.reply_text("🎤 Обробляю голосове...")
-        voice = update.message.voice
-        file = await context.bot.get_file(voice.file_id)
-        os.makedirs("temp", exist_ok=True)
-        ogg_path = f"temp/voice_{datetime.now().strftime('%Y%m%d_%H%M%S')}.ogg"
-        await file.download_to_drive(ogg_path)
-        wav_path = ogg_path.replace(".ogg", ".wav")
-        audio = AudioSegment.from_ogg(ogg_path)
-        audio.export(wav_path, format="wav")
-        recognizer = sr.Recognizer()
-        with sr.AudioFile(wav_path) as source:
-            audio_data = recognizer.record(source)
-        text = None
-        for lang in ["uk-UA", "ru-RU", "en-US"]:
-            try:
-                text = recognizer.recognize_google(audio_data, language=lang)
-                if text:
-                    break
-            except:
-                continue
-        os.remove(ogg_path)
-        os.remove(wav_path)
-        if text:
-            return text
-        await update.message.reply_text("❌ Не вдалося розпізнати голос.")
-        return None
-    except Exception as e:
-        print(f"❌ Помилка розпізнавання: {e}")
-        sys.stdout.flush()
-        await update.message.reply_text("❌ Помилка обробки голосового.")
-        return None
-
-async def voice_handler(update, context):
-    if "category" not in context.user_data:
-        await update.message.reply_text("⚠️ Спочатку оберіть категорію через /start")
-        return
-    text = await transcribe_voice(update, context)
-    if not text:
-        return
-    context.user_data["description"] = text
-    category = context.user_data["category"]
-    if category in THOUGHT_CATEGORIES:
-        save_to_excel(context.user_data)
-        await update.message.reply_text(f"🎤 Розпізнано: {text}\n\n✅ Збережено!")
-        context.user_data.clear()
-        return
-    if "priority" not in context.user_data:
-        context.user_data["priority"] = "Середній"
-    save_to_excel(context.user_data)
-    await update.message.reply_text(f"🎤 Розпізнано: {text}\n\n✅ Збережено!")
-    context.user_data.clear()
-
-# ========================================
 # ОСНОВНІ ФУНКЦІЇ
 # ========================================
 async def start(update, context):
@@ -741,10 +682,6 @@ def main():
         print("✅ Команду /download додано")
         sys.stdout.flush()
         
-        app.add_handler(MessageHandler(filters.VOICE, voice_handler))
-        print("✅ Обробник голосових додано")
-        sys.stdout.flush()
-        
         app.add_handler(CallbackQueryHandler(handle_reminder_action, pattern="^(done_remind_|re_remind_)"))
         print("✅ Обробник перенагадування додано")
         sys.stdout.flush()
@@ -802,7 +739,6 @@ def main():
         print("📌 Команди:")
         print("  /start - почати новий запис")
         print("  /download - завантажити Excel-файл")
-        print("🎤 Голосові повідомлення працюють!")
         print("⏰ Нагадування перевіряються кожні 60 секунд")
         print("=" * 60)
         sys.stdout.flush()
