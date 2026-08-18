@@ -39,8 +39,8 @@ TASK_CATEGORIES = ["ТЕК", "Ідеї", "Особисті"]
 MEDIA_CATEGORIES = ["Книги", "Фільми", "Що відвідати"]
 THOUGHT_CATEGORIES = ["Цікаві думки"]
 CATEGORY, DESCRIPTION, PRIORITY, RESPONSIBLE, DUE_DATE, NAME, LINK = range(7)
-REMINDER_TIME = 7  # Стан для введення часу нагадування
-REMINDER_ACTION = 8  # Стан для дії після нагадування
+REMINDER_TIME = 7
+REMINDER_ACTION = 8
 
 print("✅ Налаштування завантажено")
 sys.stdout.flush()
@@ -64,7 +64,6 @@ def get_category_keyboard():
     return InlineKeyboardMarkup(keyboard)
 
 def get_reminder_action_keyboard(row_index):
-    """Клавіатура для дій після нагадування"""
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("⏰ Перенагадати", callback_data=f"re_remind_{row_index}")],
         [InlineKeyboardButton("✅ Виконано", callback_data=f"done_remind_{row_index}")]
@@ -111,7 +110,6 @@ def save_to_excel(data):
         return False
 
 def update_reminder_time(row_index, new_time):
-    """Оновлює час нагадування для конкретного рядка"""
     try:
         wb = openpyxl.load_workbook(EXCEL_FILE)
         sheet = wb.active
@@ -122,7 +120,6 @@ def update_reminder_time(row_index, new_time):
                 reminder_col = i + 1
                 break
         if reminder_col:
-            # openpyxl: row_index + 2 (бо 0 - заголовки, а row_index починається з 0)
             row = sheet[row_index + 2]
             row[reminder_col - 1].value = new_time
             wb.save(EXCEL_FILE)
@@ -135,7 +132,6 @@ def update_reminder_time(row_index, new_time):
     return False
 
 def clear_reminder(row_index):
-    """Очищає колонку 'Нагадати о' для конкретного рядка"""
     try:
         wb = openpyxl.load_workbook(EXCEL_FILE)
         sheet = wb.active
@@ -158,11 +154,10 @@ def clear_reminder(row_index):
     return False
 
 def get_row_data(row_index):
-    """Повертає дані рядка за індексом"""
     try:
         wb = openpyxl.load_workbook(EXCEL_FILE)
         sheet = wb.active
-        row = sheet[row_index + 2]  # +2 бо 0 - заголовки, а row_index з 0
+        row = sheet[row_index + 2]
         return {
             "category": row[0].value or "",
             "description": row[2].value or "",
@@ -177,7 +172,6 @@ def get_row_data(row_index):
     return None
 
 def check_reminders():
-    """Перевіряє нагадування і повертає список активних"""
     reminders = []
     try:
         wb = openpyxl.load_workbook(EXCEL_FILE)
@@ -215,40 +209,41 @@ def check_reminders():
     return reminders
 
 # ========================================
-# ФОНОВИЙ ПРОЦЕС ДЛЯ НАГАДУВАНЬ
+# ФОНОВИЙ ПРОЦЕС ДЛЯ НАГАДУВАНЬ (З НАДСИЛАННЯМ У ЧАТ)
 # ========================================
 async def reminder_loop(app: Application):
-    """Фоновий процес перевірки нагадувань"""
+    """Фоновий процес перевірки нагадувань з надсиланням у чат"""
     while True:
         try:
             reminders = check_reminders()
             if reminders:
                 for reminder in reminders:
                     try:
-                        # Формуємо повідомлення
-                        message = (
-                            f"⏰ **Нагадування!**\n\n"
-                            f"📌 Категорія: {reminder['category']}\n"
-                            f"📝 Опис: {reminder['description']}\n"
-                            f"⚡ Пріоритет: {reminder['priority']}\n"
-                            f"👤 Відповідальний: {reminder['responsible'] or '—'}\n"
-                            f"⏳ Час: {reminder['reminder_time']}"
-                        )
-                        # Надсилаємо повідомлення в чат (логи для тесту)
-                        print(f"⏰ Нагадування: {message}")
-                        sys.stdout.flush()
-                        
-                        # Тут потрібно надіслати повідомлення в чат
-                        # Але для цього потрібен chat_id. Ми поки що логуємо.
-                        # Пізніше додамо надсилання в чат.
-                        
+                        chat_id = app.bot_data.get("chat_id")
+                        if chat_id:
+                            message = (
+                                f"⏰ **Нагадування!**\n\n"
+                                f"📌 Категорія: {reminder['category']}\n"
+                                f"📝 Опис: {reminder['description']}\n"
+                                f"⚡ Пріоритет: {reminder['priority']}\n"
+                                f"👤 Відповідальний: {reminder.get('responsible', '—')}\n"
+                                f"⏳ Час: {reminder['reminder_time']}"
+                            )
+                            await app.bot.send_message(
+                                chat_id=chat_id,
+                                text=message,
+                                reply_markup=get_reminder_action_keyboard(reminder['row_index']),
+                                parse_mode="Markdown"
+                            )
+                            print("✅ Нагадування надіслано в чат")
+                            clear_reminder(reminder['row_index'])
+                        else:
+                            print("⚠️ chat_id не знайдено. Нагадування залоговано.")
+                            print(f"⏰ Нагадування: {message}")
                     except Exception as e:
                         print(f"❌ Помилка надсилання нагадування: {e}")
-                        sys.stdout.flush()
         except Exception as e:
             print(f"❌ Помилка в reminder_loop: {e}")
-            sys.stdout.flush()
-        
         await asyncio.sleep(CHECK_INTERVAL)
 
 # ========================================
@@ -271,13 +266,11 @@ async def download_excel(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ОБРОБНИК ПЕРЕНАГАДУВАННЯ
 # ========================================
 async def handle_reminder_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обробка дій після нагадування (перенагадати / виконано)"""
     query = update.callback_query
     await query.answer()
     
     data = query.data
     if data.startswith("done_remind_"):
-        # Виконано — очищаємо нагадування
         row_index = int(data.split("_")[2])
         if clear_reminder(row_index):
             await query.edit_message_text("✅ Нагадування виконано! Запис очищено.")
@@ -286,7 +279,6 @@ async def handle_reminder_action(update: Update, context: ContextTypes.DEFAULT_T
         return ConversationHandler.END
     
     elif data.startswith("re_remind_"):
-        # Перенагадати — запитуємо новий час
         row_index = int(data.split("_")[2])
         context.user_data["remind_row_index"] = row_index
         await query.edit_message_text(
@@ -298,7 +290,6 @@ async def handle_reminder_action(update: Update, context: ContextTypes.DEFAULT_T
         return REMINDER_ACTION
 
 async def handle_new_reminder_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обробка нового часу для перенагадування"""
     row_index = context.user_data.get("remind_row_index")
     if row_index is None:
         await update.message.reply_text("❌ Помилка: не знайдено рядок для оновлення.")
@@ -385,7 +376,9 @@ async def voice_handler(update, context):
 # ОСНОВНІ ФУНКЦІЇ
 # ========================================
 async def start(update, context):
-    print(f"📩 /start від {update.effective_user.username}")
+    # Зберігаємо chat_id для надсилання нагадувань
+    context.bot_data["chat_id"] = update.effective_chat.id
+    print(f"📩 /start від {update.effective_user.username}, chat_id: {update.effective_chat.id}")
     sys.stdout.flush()
     await update.message.reply_text(
         "📋 Оберіть категорію:",
@@ -715,7 +708,6 @@ def main():
         print("✅ Обробник голосових додано")
         sys.stdout.flush()
         
-        # Додаємо обробник для дій з нагадуваннями
         app.add_handler(CallbackQueryHandler(handle_reminder_action, pattern="^(done_remind_|re_remind_)"))
         print("✅ Обробник перенагадування додано")
         sys.stdout.flush()
@@ -762,7 +754,6 @@ def main():
         print("✅ ConversationHandler додано")
         sys.stdout.flush()
         
-        # Фоновий процес для нагадувань
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         loop.create_task(reminder_loop(app))
