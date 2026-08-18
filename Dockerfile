@@ -2,6 +2,17 @@ FROM linuxserver/ffmpeg:latest AS ffmpeg
 
 FROM python:3.11-slim
 
-# Копіюємо ffmpeg та ffprobe
 COPY --from=ffmpeg /usr/local/bin/ffmpeg /usr/local/bin/ffmpeg
-COPY --from=ffmpeg /usr/local/bin/ffprobe /usr/local/bin/ff
+COPY --from=ffmpeg /usr/local/bin/ffprobe /usr/local/bin/ffprobe
+
+RUN chmod +x /usr/local/bin/ffmpeg /usr/local/bin/ffprobe
+
+WORKDIR /app
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY bot.py .
+
+# ВАЖЛИВО: додаємо команду запуску
+CMD ["python", "-u", "bot.py"]
