@@ -202,7 +202,7 @@ def check_reminders():
     return reminders
 
 # ========================================
-# ФОНОВИЙ ПРОЦЕС ДЛЯ НАГАДУВАНЬ
+# ФОНОВИЙ ПРОЦЕС ДЛЯ НАГАДУВАНЬ (ВИПРАВЛЕНО)
 # ========================================
 async def reminder_loop(app: Application):
     while True:
@@ -230,8 +230,7 @@ async def reminder_loop(app: Application):
                             print("✅ Нагадування надіслано в чат")
                             clear_reminder(reminder['row_index'])
                         else:
-                            print("⚠️ chat_id не знайдено. Нагадування залоговано.")
-                            print(f"⏰ Нагадування: {message}")
+                            print("⚠️ chat_id не знайдено. Нагадування не надіслано.")
                     except Exception as e:
                         print(f"❌ Помилка надсилання нагадування: {e}")
         except Exception as e:
@@ -309,7 +308,7 @@ async def handle_new_reminder_time(update: Update, context: ContextTypes.DEFAULT
         return REMINDER_ACTION
 
 # ========================================
-# ГОЛОСОВІ (РОБОЧА ВЕРСІЯ)
+# ГОЛОСОВІ (РОБОЧА ВЕРСІЯ З КРАЩОЮ ОБРОБКОЮ)
 # ========================================
 async def transcribe_voice(update, context):
     try:
@@ -331,13 +330,22 @@ async def transcribe_voice(update, context):
                 text = recognizer.recognize_google(audio_data, language=lang)
                 if text:
                     break
-            except:
+            except sr.UnknownValueError:
+                continue
+            except sr.RequestError as e:
+                print(f"❌ Помилка Google API: {e}")
+                await update.message.reply_text("❌ Помилка підключення до Google API.")
+                os.remove(ogg_path)
+                os.remove(wav_path)
+                return None
+            except Exception as e:
+                print(f"❌ Помилка розпізнавання: {e}")
                 continue
         os.remove(ogg_path)
         os.remove(wav_path)
         if text:
             return text
-        await update.message.reply_text("❌ Не вдалося розпізнати голос.")
+        await update.message.reply_text("❌ Не вдалося розпізнати голос. Спробуйте чіткіше.")
         return None
     except Exception as e:
         print(f"❌ Помилка розпізнавання: {e}")
