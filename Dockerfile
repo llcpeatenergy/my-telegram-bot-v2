@@ -14,5 +14,4 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY bot.py .
 
-# ВАЖЛИВО: додаємо команду запуску
 CMD ["python", "-u", "bot.py"]
