@@ -1,9 +1,15 @@
+FROM jrottenberg/ffmpeg:4.1-alpine AS ffmpeg
+
 FROM python:3.11-slim
 
-WORKDIR /app
+# Копіюємо ffmpeg та ffprobe
+COPY --from=ffmpeg /usr/local/bin/ffmpeg /usr/local/bin/ffmpeg
+COPY --from=ffmpeg /usr/local/bin/ffprobe /usr/local/bin/ffprobe
 
-# Встановлюємо ffmpeg
-RUN apt-get update && apt-get install -y ffmpeg && apt-get clean
+# Перевіряємо, що ffmpeg працює
+RUN /usr/local/bin/ffmpeg -version
+
+WORKDIR /app
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
