@@ -29,6 +29,7 @@ if not TOKEN:
     sys.exit(1)
 
 EXCEL_FILE = "notebook.xlsx"
+CHAT_ID_FILE = "chat_id.txt"
 CHECK_INTERVAL = 60
 
 # Київський час (UTC+3)
@@ -36,6 +37,44 @@ UKRAINE_TZ = timezone(timedelta(hours=3))
 
 print(f"✅ Токен завантажено: {TOKEN[:10]}...")
 print(f"✅ Часовий пояс: UTC+3 (Київ)")
+sys.stdout.flush()
+
+# ========================================
+# ФУНКЦІЇ ДЛЯ РОБОТИ З CHAT_ID
+# ========================================
+def save_chat_id(chat_id):
+    """Зберігає chat_id у файл"""
+    try:
+        with open(CHAT_ID_FILE, 'w') as f:
+            f.write(str(chat_id))
+        print(f"✅ chat_id {chat_id} збережено у файл")
+        return True
+    except Exception as e:
+        print(f"❌ Помилка збереження chat_id: {e}")
+        return False
+
+def load_chat_id():
+    """Завантажує chat_id з файлу"""
+    try:
+        if os.path.exists(CHAT_ID_FILE):
+            with open(CHAT_ID_FILE, 'r') as f:
+                chat_id = int(f.read().strip())
+            print(f"✅ chat_id {chat_id} завантажено з файлу")
+            return chat_id
+        else:
+            print("⚠️ Файл chat_id.txt не знайдено")
+            return None
+    except Exception as e:
+        print(f"❌ Помилка завантаження chat_id: {e}")
+        return None
+
+# Завантажуємо chat_id при запуску
+SAVED_CHAT_ID = load_chat_id()
+if SAVED_CHAT_ID:
+    print(f"✅ Бот запам'ятав ваш chat_id: {SAVED_CHAT_ID}")
+else:
+    print("⚠️ Бот ще не знає ваш chat_id. Напишіть /start")
+
 sys.stdout.flush()
 
 CATEGORIES = ["ТЕК", "Ідеї", "Особисті", "Книги", "Фільми", "Що відвідати", "Цікаві думки"]
@@ -211,7 +250,11 @@ async def reminder_loop(app: Application):
             if reminders:
                 for reminder in reminders:
                     try:
-                        chat_id = app.bot_data.get("chat_id")
+                        # Спочатку пробуємо взяти chat_id з файлу
+                        chat_id = load_chat_id()
+                        if not chat_id:
+                            chat_id = app.bot_data.get("chat_id")
+                        
                         if chat_id:
                             message = (
                                 f"⏰ **Нагадування!**\n\n"
@@ -345,7 +388,7 @@ async def transcribe_voice(update, context):
         os.remove(wav_path)
         if text:
             return text
-        await update.message.reply_text("❌ Не вдалося розпізнати голос. Спробуйте чіткіше.")
+        await update.message.reply_text("❌ Не вдалося розпізнати голос. Спробуйте чіткіше або довше повідомлення.")
         return None
     except Exception as e:
         print(f"❌ Помилка розпізнавання: {e}")
@@ -377,9 +420,14 @@ async def voice_handler(update, context):
 # ОСНОВНІ ФУНКЦІЇ
 # ========================================
 async def start(update, context):
-    context.bot_data["chat_id"] = update.effective_chat.id
-    print(f"📩 /start від {update.effective_user.username}, chat_id: {update.effective_chat.id}")
+    # Зберігаємо chat_id у файл
+    chat_id = update.effective_chat.id
+    save_chat_id(chat_id)
+    context.bot_data["chat_id"] = chat_id
+    
+    print(f"📩 /start від {update.effective_user.username}, chat_id: {chat_id}")
     sys.stdout.flush()
+    
     await update.message.reply_text(
         "📋 Оберіть категорію:",
         reply_markup=get_category_keyboard()
