@@ -1,8 +1,8 @@
 import sys
 import os
+import subprocess
 import openpyxl
-from datetime import datetime, timedelta
-import pytz
+from datetime import datetime, timedelta, timezone
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ConversationHandler, ContextTypes
 import speech_recognition as sr
@@ -11,13 +11,28 @@ import asyncio
 import traceback
 
 # ========================================
-# ПРИМУСОВЕ ЛОГУВАННЯ
+# ПРИМУСОВЕ ЛОГУВАННЯ ТА НАЛАШТУВАННЯ PATH
 # ========================================
 print("=" * 60)
 print("🤖 БОТ ЗАПУСКАЄТЬСЯ")
 print(f"Python версія: {sys.version}")
 print(f"Поточна папка: {os.getcwd()}")
 print("=" * 60)
+sys.stdout.flush()
+
+# Додаємо ffmpeg в PATH, якщо він є
+os.environ["PATH"] += os.pathsep + "/usr/local/bin"
+os.environ["PATH"] += os.pathsep + "/usr/bin"
+
+# Перевіряємо ffmpeg
+try:
+    result = subprocess.run(["ffmpeg", "-version"], capture_output=True, text=True)
+    if result.returncode == 0:
+        print("✅ ffmpeg знайдено та працює")
+    else:
+        print("⚠️ ffmpeg знайдено, але не працює")
+except FileNotFoundError:
+    print("❌ ffmpeg не знайдено. Голосові не працюватимуть.")
 sys.stdout.flush()
 
 # ========================================
@@ -31,10 +46,13 @@ if not TOKEN:
 
 EXCEL_FILE = "notebook.xlsx"
 CHECK_INTERVAL = 60
-UKRAINE_TZ = pytz.timezone('Europe/Kyiv')  # ВАШ ЧАСОВИЙ ПОЯС
+
+# Часовий пояс України (UTC+3)
+UKRAINE_OFFSET = timedelta(hours=3)
+UKRAINE_TZ = timezone(UKRAINE_OFFSET)
 
 print(f"✅ Токен завантажено: {TOKEN[:10]}...")
-print(f"✅ Часовий пояс: {UKRAINE_TZ}")
+print(f"✅ Часовий пояс: UTC+3")
 sys.stdout.flush()
 
 CATEGORIES = ["ТЕК", "Ідеї", "Особисті", "Книги", "Фільми", "Що відвідати", "Цікаві думки"]
@@ -79,6 +97,9 @@ def get_headers():
     return ["Категорія", "Дата", "Опис", "Пріоритет", "Хто відповідальний", 
             "Дата виконання", "Назва", "Лінк", "Нагадати о"]
 
+def get_now_ukraine():
+    return datetime.now(UKRAINE_TZ)
+
 def save_to_excel(data):
     try:
         print(f"📝 Зберігаю в Excel: {data.get('description', '')[:30]}...")
@@ -91,8 +112,7 @@ def save_to_excel(data):
             sheet = wb.active
             sheet.append(get_headers())
         
-        # Поточний час у вашому часовому поясі
-        now_ukraine = datetime.now(UKRAINE_TZ)
+        now_ukraine = get_now_ukraine()
         
         row = [
             data.get("category", ""),
@@ -159,24 +179,6 @@ def clear_reminder(row_index):
         sys.stdout.flush()
     return False
 
-def get_row_data(row_index):
-    try:
-        wb = openpyxl.load_workbook(EXCEL_FILE)
-        sheet = wb.active
-        row = sheet[row_index + 2]
-        return {
-            "category": row[0].value or "",
-            "description": row[2].value or "",
-            "priority": row[3].value or "",
-            "responsible": row[4].value or "",
-            "due_date": row[5].value or "",
-            "reminder_time": row[8].value or ""
-        }
-    except Exception as e:
-        print(f"❌ Помилка отримання даних рядка: {e}")
-        sys.stdout.flush()
-    return None
-
 def check_reminders():
     reminders = []
     try:
@@ -190,14 +192,15 @@ def check_reminders():
                 break
         if not reminder_col:
             return reminders
-        # Поточний час у вашому часовому поясі
-        now_ukraine = datetime.now(UKRAINE_TZ)
+        
+        now_ukraine = get_now_ukraine()
+        
         for idx, row in enumerate(sheet.iter_rows(min_row=2, values_only=False)):
             reminder_value = row[reminder_col - 1].value
             if reminder_value and isinstance(reminder_value, str):
                 try:
                     reminder_time = datetime.strptime(reminder_value, "%Y-%m-%d %H:%M")
-                    # Порівнюємо з вашим часом
+                    reminder_time = reminder_time.replace(tzinfo=UKRAINE_TZ)
                     if reminder_time <= now_ukraine:
                         reminders.append({
                             "row_index": idx,
@@ -206,7 +209,6 @@ def check_reminders():
                             "description": row[2].value or "",
                             "priority": row[3].value or "",
                             "responsible": row[4].value or "",
-                            "due_date": row[5].value or "",
                             "reminder_time": reminder_value
                         })
                 except:
@@ -383,6 +385,7 @@ async def voice_handler(update, context):
 # ОСНОВНІ ФУНКЦІЇ
 # ========================================
 async def start(update, context):
+    # ЗБЕРІГАЄМО CHAT_ID ДЛЯ НАГАДУВАНЬ
     context.bot_data["chat_id"] = update.effective_chat.id
     print(f"📩 /start від {update.effective_user.username}, chat_id: {update.effective_chat.id}")
     sys.stdout.flush()
@@ -603,13 +606,8 @@ async def get_reminder_time(update, context):
     
     reminder_text = update.message.text.strip()
     try:
-        # Перетворюємо місцевий час у UTC для зберігання
         local_time = datetime.strptime(reminder_text, "%d.%m.%Y %H:%M")
-        ukraine_time = UKRAINE_TZ.localize(local_time)
-        utc_time = ukraine_time.astimezone(pytz.UTC)
-        utc_time_str = utc_time.strftime("%Y-%m-%d %H:%M")
-        
-        context.user_data["reminder_time"] = utc_time_str
+        context.user_data["reminder_time"] = local_time.strftime("%Y-%m-%d %H:%M")
         save_to_excel(context.user_data)
         await update.message.reply_text(
             f"✅ Збережено! Нагадування встановлено на {reminder_text} (за вашим часом)"
